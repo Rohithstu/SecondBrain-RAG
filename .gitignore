@@ -1,0 +1,21 @@
+# Python
+__pycache__/
+*.py[cod]
+*$py.class
+.pytest_cache/
+.venv/
+venv/
+ENV/
+env/
+.env
+
+# Project Specific
+data/*
+!data/.gitkeep
+index.faiss
+metadata.json
+secondbrain_history.db
+
+# OS
+.DS_Store
+Thumbs.db

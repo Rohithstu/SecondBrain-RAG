@@ -1,0 +1,15 @@
+sentence-transformers
+faiss-cpu
+numpy
+flask
+PyPDF2
+pytesseract
+Pillow
+python-docx
+python-pptx
+pandas
+openpyxl
+watchdog
+google-generativeai
+requests
+python-dotenv
