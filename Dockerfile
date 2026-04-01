@@ -9,11 +9,11 @@ ENV PYTHONUNBUFFERED=1
 WORKDIR /app
 
 # Install system dependencies with better error handling (Tesseract OCR, libGL for OpenCV/PIL)
-RUN apt --quiet --yes update && \
-    apt --quiet --yes install \
+RUN apt-get update && \
+    apt-get install -y \
     tesseract-ocr \
     libtesseract-dev \
-    libgl1-mesa-glx \
+    libgl1 \
     libglib2.0-0 \
     build-essential && \
     apt-get clean && \
