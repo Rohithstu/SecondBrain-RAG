@@ -72,7 +72,9 @@ def upload_file():
 
 if __name__ == "__main__":
     try:
-        app.run(debug=False, port=5001)
+        # Hugging Face usually provides the PORT variable or expects 7860
+        port = int(os.environ.get("PORT", 7860))
+        app.run(host="0.0.0.0", port=port, debug=False)
     finally:
         monitor.stop()
         monitor.join()
