@@ -1,4 +1,4 @@
-# 🧠 SecondBrain — Semantic Knowledge Engine
+# 🧠 SecondBrain-RAG — Semantic Knowledge Engine
 
 > **A production-grade Retrieval-Augmented Generation (RAG) system** that lets you chat with your own documents using state-of-the-art semantic search and LLM-powered answer generation.
 
@@ -107,8 +107,8 @@ MINIPROJECT/
 ### 2. Clone the Repository
 
 ```bash
-git clone https://github.com/Rohithstu/knowledge-engine-Semantic-knowledge-system-using-rag-.git
-cd knowledge-engine-Semantic-knowledge-system-using-rag-
+git clone https://github.com/Rohithstu/SecondBrain-RAG.git
+cd SecondBrain-RAG
 ```
 
 ### 3. Install Dependencies
