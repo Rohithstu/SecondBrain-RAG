@@ -348,7 +348,7 @@ class SecondBrainEngine:
             self._save_to_disk()
 
     # ── SEARCH & GENERATION ───────────────────────────────────────────────
-    def search(self, query: str, top_k: int = 4, offline: bool = False) -> Dict[str, Any]:
+    def search(self, query: str, top_k: int = 6, offline: bool = False) -> Dict[str, Any]:
         """Performs semantic search and uses LLM to generate a grounded answer."""
         # Use substantial context for offline mode to find the best cluster
         if offline: top_k = 10
@@ -390,22 +390,23 @@ class SecondBrainEngine:
         # ── LLM GENERATION ────────────────────────────────────────────────
         context_block = "\n---\n".join(context_chunks)
         prompt = f"""
-        Answer the following question based ONLY on the strictly provided context chunks. 
-        If the answer is not explicitly stated in the context, say "I don't find this information in my documents."
-        
-        Context:
+        STRICT GROUNDING INSTRUCTIONS:
+        You are a surgical retrieval engine. Your task is to extract and reconstruct the answer to the user's question using ONLY the provided context blocks. 
+
+        Context Reference Blocks:
         {context_block}
-        
-        Question: {query}
-        
-        CRITICAL INSTRUCTIONS:
-        - DO NOT hallucinate, guess, or add ANY outside information.
-        - Be extremely concise and stick ONLY to the exact facts presented in the context.
-        - If the context provides bullet points, output them as bullet points.
-        - Do not weave a long descriptive story. Keep it factual and brief.
-        - Cite your sources inline exactly as they appear (e.g. [filename.pdf]).
-        
-        Answer:
+
+        User Query: {query}
+
+        MANDATORY RULES:
+        1. 💎 ZERO EXTERNAL KNOWLEDGE: Do not use a single word, letter, or fact that is not directly present in the Reference Blocks above.
+        2. 💎 ZERO HALLUCINATION: If the exact information is not in the context, clearly state: "The requested information is not present in my local database." 
+        3. 💎 EXACT RETRIEVAL: Understand the user's query and retrieve the *relevant* response depth. If the user asks for a simple fact, give the fact. If they ask for a detailed explanation found in the text, provide the full explanation from the text.
+        4. 💎 NO PLACEHOLDERS: Do not guess, bridge gaps, or use "common knowledge."
+        5. 💎 MARKDOWN FORMATTING: Use bold, headers, and bullet points to organize the *retrieved* information clearly.
+        6. 💎 INLINE CITATIONS: End every relevant sentence with its source filename in square brackets (e.g., [document.pdf]).
+
+        Final Answer Construction:
         """
         
         answer = self.llm.generate(prompt)
