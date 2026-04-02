@@ -12,9 +12,10 @@ import json
 import hashlib
 import numpy as np # type: ignore
 import faiss # type: ignore
+import torch # type: ignore
 import time
 import requests # type: ignore
-# from sentence_transformers import SentenceTransformer # type: ignore (Skipping Hugging Face)
+from sentence_transformers import SentenceTransformer, util # type: ignore
 from threading import Thread
 import google.generativeai as genai # type: ignore
 from typing import List, Dict, Set, Any, cast, Tuple, Optional, Union, SupportsIndex
@@ -123,9 +124,8 @@ class SecondBrainEngine:
         self.metadata_file: str = metadata_file
         self.relevance_threshold: float = relevance_threshold
         
-        print(f"[Engine] Using Gemini Embedding Model: text-embedding-004...")
-        # We don't initialize a local model anymore; embeddings will be fetched via API.
-        self.embed_model_name = "models/text-embedding-004"
+        print(f"[Engine] Initializing Embedding Model: {model_name}...")
+        self.model: SentenceTransformer = SentenceTransformer(model_name)
         
         # LLM Initialization
         api_key = os.getenv("GEMINI_API_KEY")
@@ -293,8 +293,7 @@ class SecondBrainEngine:
             for s in changed: self.file_metadata.pop(str(s), None)
             
             if self.all_chunks:
-                raw_embs = self._get_gemini_embeddings(self.all_chunks)
-                embs = np.array(raw_embs, dtype=np.float32)
+                embs = np.array(self.model.encode(self.all_chunks, show_progress_bar=False), dtype=np.float32)
                 self.index = cast(faiss.IndexFlatL2, faiss.IndexFlatL2(embs.shape[1]))
                 if self.index is not None and hasattr(self.index, "add"):
                     getattr(self.index, "add")(embs)
@@ -335,8 +334,7 @@ class SecondBrainEngine:
                     new_chunks = self._chunk_text(cleaned)
                     if new_chunks:
                         print(f"  [Load] {rel} ({len(new_chunks)} chunks indexed)")
-                        raw_embs = self._get_gemini_embeddings(new_chunks)
-                        embs = np.array(raw_embs, dtype=np.float32)
+                        embs = np.array(self.model.encode(new_chunks, show_progress_bar=False), dtype=np.float32)
                         if self.index is None: 
                             self.index = cast(faiss.IndexFlatL2, faiss.IndexFlatL2(embs.shape[1]))
                         if self.index is not None and hasattr(self.index, "add"):
@@ -357,8 +355,7 @@ class SecondBrainEngine:
         if self.index is None or not self.all_chunks:
             return {"answer": "I don't have any knowledge yet. Please add documents to the data folder.", "confidence": 0}
 
-        q_emb_list = self._get_gemini_embeddings([query])
-        q_emb = np.array(q_emb_list, dtype=np.float32)
+        q_emb = np.array(self.model.encode([query]), dtype=np.float32)
         if self.index is not None and hasattr(self.index, "search"):
             distances, indices = getattr(self.index, "search")(q_emb, top_k)
         else:
@@ -452,19 +449,15 @@ class SecondBrainEngine:
     def _offline_synthesize(self, query: str, context_chunks: List[str], sources: List[str]) -> Dict[str, Any]:
         """Cluster Retrieval for Full-Paragraph Offline Context."""
         try:
-            q_emb = np.array(self._get_gemini_embeddings([query]), dtype=np.float32)[0]
+            # 1. First, find which CHUNK is overall most relevant to the query
+            q_emb = self.model.encode([query], convert_to_tensor=True, show_progress_bar=False)
             chunk_texts_only = [re.sub(r'\[Source: .*?\]', '', c).strip() for c in context_chunks]
-            chunk_embs = np.array(self._get_gemini_embeddings(chunk_texts_only), dtype=np.float32)
+            chunk_embs = self.model.encode(chunk_texts_only, convert_to_tensor=True, show_progress_bar=False)
             
-            # Use dot product for cosine similarity with Gemini normalized embeddings
-            dots = np.dot(chunk_embs, q_emb)
-            norms = np.linalg.norm(chunk_embs, axis=1) * np.linalg.norm(q_emb)
-            # Handle zero norms
-            norms[norms == 0] = 1e-9
-            chunk_scores = dots / norms
-            top_chunk_idx = int(np.argmax(chunk_scores))
+            chunk_scores = util.cos_sim(q_emb, chunk_embs)[0]
+            top_chunk_idx = int(torch.argmax(chunk_scores).item())
             
-            if chunk_scores[top_chunk_idx] < 0.35:
+            if chunk_scores[top_chunk_idx] < 0.25:
                 return {"answer": "Offline: No documents seem highly relevant to this specific query.", "sources": sources, "confidence": 0}
 
             # 2. Get the best chunk and its source
@@ -473,9 +466,22 @@ class SecondBrainEngine:
             best_src = source_match.group(1) if source_match else "Dataset"
             best_chunk_clean = re.sub(r'\[Source: .*?\]', '', best_chunk_raw).strip()
 
+            # --- HIGHLIGHT MAIN ANSWER ---
+            # Split paragraph into sentences to find the exact text
+            raw_sentences = re.split(r'(?<=[.!?])\s+', best_chunk_clean)
+            sentences = [s.strip() for s in raw_sentences if len(s.strip()) > 5]
+            
+            highlighted_chunk = best_chunk_clean
+            if sentences:
+                s_embs = self.model.encode(sentences, convert_to_tensor=True, show_progress_bar=False)
+                s_scores = util.cos_sim(q_emb, s_embs)[0]
+                best_s_idx = int(torch.argmax(s_scores).item())
+                best_sentence = sentences[best_s_idx]
+                
+                # Replace the best sentence with a bolded version
+                highlighted_chunk = best_chunk_clean.replace(best_sentence, f"**{best_sentence}**")
+
             # 3. Assemble the "Answer Cluster"
-            # Since the chunk itself is a contextual unit, we return it as a "Smart Section"
-            # But we also look for the #2 highest chunk if it's from a different file or section
             second_chunk_idx = -1
             if len(chunk_scores) > 1:
                 # Find the next best chunk with a different enough score or source
@@ -486,17 +492,17 @@ class SecondBrainEngine:
                         second_chunk_idx = idx
                         break
 
-            ans = f"### Content Cluster from **{best_src}**\n"
-            ans += f"I found a highly relevant section in your documents:\n\n"
-            ans += f"> {best_chunk_clean}\n\n"
+            ans = f"### 📄 Exact Match in **{best_src}**\n"
+            ans += f"*(Generated securely in Local Offline Mode)*\n\n"
+            ans += f"I have analyzed your documents offline. Here is the most relevant section with the likely answer **highlighted**:\n\n"
+            ans += f"> {highlighted_chunk}\n\n"
             
             if second_chunk_idx != -1:
                 sec_raw = context_chunks[second_chunk_idx]
                 sec_src = re.search(r'\[Source: (.*?)\]', sec_raw)
                 sec_src = sec_src.group(1) if sec_src else "Dataset"
                 sec_clean = re.sub(r'\[Source: .*?\]', '', sec_raw).strip()
-                ans += f"**Additional Relevant Context ({sec_src}):**\n"
-                # Shorten the context snippet for the second hit
+                ans += f"**🔗 Additional Context ({sec_src}):**\n"
                 ans += f"• {sec_clean[:300]}...\n"
             
             return {
