@@ -1,4 +1,4 @@
-# 🧠 SecondBrain-RAG — Semantic Knowledge Engine
+# 🧠 SecondBrain — Semantic Knowledge Engine
 
 > **A production-grade Retrieval-Augmented Generation (RAG) system** that lets you chat with your own documents using state-of-the-art semantic search and LLM-powered answer generation.
 
@@ -107,8 +107,8 @@ MINIPROJECT/
 ### 2. Clone the Repository
 
 ```bash
-git clone https://github.com/Rohithstu/SecondBrain-RAG.git
-cd SecondBrain-RAG
+git clone https://github.com/Rohithstu/knowledge-engine-Semantic-knowledge-system-using-rag-.git
+cd knowledge-engine-Semantic-knowledge-system-using-rag-
 ```
 
 ### 3. Install Dependencies
@@ -224,30 +224,6 @@ Upload a new document directly via the web dashboard.
   "filename": "report.pdf"
 }
 ```
-
----
-
-## ☁️ Deployment
-
-Deploying the **SecondBrain Engine** requires a platform that supports Docker and persistent storage (for your indexed documents).
-
-### 🚀 Recommended: Docker + Render/Railway
-The easiest way is to use the provided `Dockerfile`.
-
-1.  **Build the Image:**
-    ```bash
-    docker build -t secondbrain .
-    ```
-2.  **Run Locally with Docker:**
-    ```bash
-    docker run -p 5001:5001 -v $(pwd)/data:/app/data --env-file .env secondbrain
-    ```
-
-3.  **Deploy to Cloud:**
-    -   Connect your GitHub repository to [Render.com](https://render.com) or [Railway.app](https://railway.app).
-    -   Select **Web Service** and choose **Docker** as the runtime.
-    -   Add your `GEMINI_API_KEY` as an environment variable in the dashboard.
-    -   **Important:** Attach a **Persistent Disk** to the `/app/data` path to keep your vector index and uploaded documents across restarts.
 
 ---
 

@@ -1,4 +1,4 @@
-sentence-transformers
+# sentence-transformers (Skipped Hugging Face)
 faiss-cpu
 numpy
 flask

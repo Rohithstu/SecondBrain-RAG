@@ -12,11 +12,9 @@ import json
 import hashlib
 import numpy as np # type: ignore
 import faiss # type: ignore
-import torch # type: ignore
-from sentence_transformers import util # type: ignore
 import time
 import requests # type: ignore
-from sentence_transformers import SentenceTransformer # type: ignore
+# from sentence_transformers import SentenceTransformer # type: ignore (Skipping Hugging Face)
 from threading import Thread
 import google.generativeai as genai # type: ignore
 from typing import List, Dict, Set, Any, cast, Tuple, Optional, Union, SupportsIndex
@@ -125,8 +123,9 @@ class SecondBrainEngine:
         self.metadata_file: str = metadata_file
         self.relevance_threshold: float = relevance_threshold
         
-        print(f"[Engine] Initializing Embedding Model: {model_name}...")
-        self.model: SentenceTransformer = SentenceTransformer(model_name)
+        print(f"[Engine] Using Gemini Embedding Model: text-embedding-004...")
+        # We don't initialize a local model anymore; embeddings will be fetched via API.
+        self.embed_model_name = "models/text-embedding-004"
         
         # LLM Initialization
         api_key = os.getenv("GEMINI_API_KEY")
@@ -294,7 +293,8 @@ class SecondBrainEngine:
             for s in changed: self.file_metadata.pop(str(s), None)
             
             if self.all_chunks:
-                embs = np.array(self.model.encode(self.all_chunks, show_progress_bar=False), dtype=np.float32)
+                raw_embs = self._get_gemini_embeddings(self.all_chunks)
+                embs = np.array(raw_embs, dtype=np.float32)
                 self.index = cast(faiss.IndexFlatL2, faiss.IndexFlatL2(embs.shape[1]))
                 if self.index is not None and hasattr(self.index, "add"):
                     getattr(self.index, "add")(embs)
@@ -335,7 +335,8 @@ class SecondBrainEngine:
                     new_chunks = self._chunk_text(cleaned)
                     if new_chunks:
                         print(f"  [Load] {rel} ({len(new_chunks)} chunks indexed)")
-                        embs = np.array(self.model.encode(new_chunks, show_progress_bar=False), dtype=np.float32)
+                        raw_embs = self._get_gemini_embeddings(new_chunks)
+                        embs = np.array(raw_embs, dtype=np.float32)
                         if self.index is None: 
                             self.index = cast(faiss.IndexFlatL2, faiss.IndexFlatL2(embs.shape[1]))
                         if self.index is not None and hasattr(self.index, "add"):
@@ -356,7 +357,8 @@ class SecondBrainEngine:
         if self.index is None or not self.all_chunks:
             return {"answer": "I don't have any knowledge yet. Please add documents to the data folder.", "confidence": 0}
 
-        q_emb = np.array(self.model.encode([query]), dtype=np.float32)
+        q_emb_list = self._get_gemini_embeddings([query])
+        q_emb = np.array(q_emb_list, dtype=np.float32)
         if self.index is not None and hasattr(self.index, "search"):
             distances, indices = getattr(self.index, "search")(q_emb, top_k)
         else:
@@ -428,18 +430,41 @@ class SecondBrainEngine:
         }
 
 
+    def _get_gemini_embeddings(self, texts: List[str]) -> List[List[float]]:
+        """Fetch embeddings from Gemini API."""
+        try:
+            # Gemini allows batch embedding
+            result = genai.embed_content(
+                model=self.embed_model_name,
+                content=texts,
+                task_type="retrieval_document" if len(texts) > 1 else "retrieval_query"
+            )
+            # result['embedding'] is a list of lists if multiple, or a single list if one
+            embeddings = result.get('embedding', [])
+            if len(texts) == 1 and embeddings and not isinstance(embeddings[0], list):
+                return [embeddings]
+            return embeddings
+        except Exception as e:
+            print(f"[Gemini] Embedding error: {e}")
+            # Return zero vectors as fallback (should match dimension 768 for text-embedding-004)
+            return [[0.0] * 768 for _ in texts]
+
     def _offline_synthesize(self, query: str, context_chunks: List[str], sources: List[str]) -> Dict[str, Any]:
         """Cluster Retrieval for Full-Paragraph Offline Context."""
         try:
-            # 1. First, find which CHUNK is overall most relevant to the query
-            q_emb = self.model.encode([query], convert_to_tensor=True, show_progress_bar=False)
+            q_emb = np.array(self._get_gemini_embeddings([query]), dtype=np.float32)[0]
             chunk_texts_only = [re.sub(r'\[Source: .*?\]', '', c).strip() for c in context_chunks]
-            chunk_embs = self.model.encode(chunk_texts_only, convert_to_tensor=True, show_progress_bar=False)
+            chunk_embs = np.array(self._get_gemini_embeddings(chunk_texts_only), dtype=np.float32)
             
-            chunk_scores = util.cos_sim(q_emb, chunk_embs)[0]
-            top_chunk_idx = int(torch.argmax(chunk_scores).item())
+            # Use dot product for cosine similarity with Gemini normalized embeddings
+            dots = np.dot(chunk_embs, q_emb)
+            norms = np.linalg.norm(chunk_embs, axis=1) * np.linalg.norm(q_emb)
+            # Handle zero norms
+            norms[norms == 0] = 1e-9
+            chunk_scores = dots / norms
+            top_chunk_idx = int(np.argmax(chunk_scores))
             
-            if chunk_scores[top_chunk_idx] < 0.25:
+            if chunk_scores[top_chunk_idx] < 0.35:
                 return {"answer": "Offline: No documents seem highly relevant to this specific query.", "sources": sources, "confidence": 0}
 
             # 2. Get the best chunk and its source
