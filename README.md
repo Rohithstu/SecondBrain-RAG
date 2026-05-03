@@ -7,14 +7,18 @@
 [![FAISS](https://img.shields.io/badge/FAISS-Vector%20Search-00ADEF?style=flat-square)](https://github.com/facebookresearch/faiss)
 [![Gemini](https://img.shields.io/badge/Google-Gemini%202.5%20Flash-4285F4?style=flat-square&logo=google)](https://ai.google.dev)
 [![License](https://img.shields.io/badge/License-MIT-green?style=flat-square)](LICENSE)
+[![Live Demo](https://img.shields.io/badge/Render-Live%20Demo-10b981?style=flat-square&logo=render)](https://secondbrain-rag-1.onrender.com/)
 
 ---
 
+## 🚀 Live Demo
+Access the production version here: **[secondbrain-rag-1.onrender.com](https://secondbrain-rag-1.onrender.com/)**
+
 ## 📌 Overview
 
-**SecondBrain** is a local-first, AI-powered knowledge management system. Drop your documents into a folder — PDFs, Word files, PowerPoints, spreadsheets, images, or plain text — and instantly query them in natural language. The system uses semantic embeddings and a FAISS vector index for lightning-fast retrieval, then grounds its answers using the Google Gemini LLM to eliminate hallucinations.
+**SecondBrain** is a production-grade, multi-user AI knowledge system. It supports **User Authentication**, per-user data isolation, and a lightweight semantic search engine optimized for cloud deployment. Drop your documents — PDFs, Word files, PowerPoints, spreadsheets, images, or plain text — and instantly query them in natural language. 
 
-It supports both **online mode** (LLM-generated, grounded answers) and **offline mode** (local extractive summarization without any API calls).
+It supports both **Online Mode** (Gemini-powered grounded answers) and **Extractive Mode** (local retrieval using FastEmbed).
 
 ---
 
@@ -22,16 +26,16 @@ It supports both **online mode** (LLM-generated, grounded answers) and **offline
 
 | Feature | Description |
 |---|---|
-| 🔍 **Semantic Search** | Sentence-transformer embeddings (`all-MiniLM-L6-v2`) for meaning-aware retrieval |
-| 🤖 **LLM Answer Generation** | Grounded responses via Google Gemini 2.5 Flash — no hallucinations |
+| 🔍 **Semantic Search** | Local **FastEmbed** (`bge-small-en-v1.5`) for high-speed meaning-aware retrieval |
+| 🤖 **LLM Answer Generation** | Grounded responses via **Google Gemini 1.5 Flash** — no hallucinations |
+| 👥 **Multi-User Support** | Secure Login/Registration with per-user document isolation |
 | 📄 **Multi-Format Ingestion** | PDF, DOCX, PPTX, XLSX, TXT, PNG/JPG (via OCR) |
 | 🧩 **Smart Chunking** | Overlapping sentence-group chunking for high-recall context windows |
 | 🏷️ **Auto Metadata Enrichment** | LLM-extracted topics, keywords, summaries, and risk flags per document |
-| 💾 **Persistent Vector Index** | FAISS index + JSON metadata persist across restarts |
+| 💾 **Persistent Vector Index** | Per-user FAISS index + JSON metadata persist across restarts |
 | 👁️ **Live File Monitoring** | Watchdog auto-reindexes documents the moment files are added or changed |
 | 🌐 **Web Dashboard** | Glassmorphic Flask UI with Knowledge Hub and real-time search |
-| 🖥️ **Terminal Mode** | Lightweight CLI interface for headless / server environments |
-| 📴 **Offline Mode** | Cluster-based extractive retrieval — works with zero internet access |
+| ☁️ **Cloud Optimized** | Dockerized and ready for **Render** (Free Tier compatible) |
 
 ---
 
@@ -269,7 +273,7 @@ Document Ingestion
  Smart Chunking   ──► Overlapping sentence groups (3 sentences, stride 2)
       │
       ▼
- Embedding        ──► SentenceTransformer → 384-dim float32 vectors
+  Embedding        ──► FastEmbed (BGE-Small) → 384-dim float32 vectors
       │
       ▼
  FAISS Indexing   ──► IndexFlatL2, persisted to disk
