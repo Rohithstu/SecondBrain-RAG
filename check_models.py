@@ -28,7 +28,8 @@ if api_key:
     try:
         genai.configure(api_key=api_key)
         # Try a simple generation
-        m = genai.GenerativeModel("gemini-1.5-flash")
+        m = genai.GenerativeModel("gemini-2.5-flash")
+
         response = m.generate_content("Hello")
         print(f"Gemini response: {response.text}")
     except Exception as e:

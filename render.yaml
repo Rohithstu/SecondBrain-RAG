@@ -1,0 +1,14 @@
+services:
+  - type: web
+    name: secondbrain-ai
+    env: docker
+    plan: free # Change to 'starter' if using a persistent disk
+    envVars:
+      - key: SECRET_KEY
+        generateValue: true
+      - key: GEMINI_API_KEY
+        sync: false
+    disk:
+      name: sb-data
+      mountPath: /app/data
+      sizeGB: 1

@@ -12,20 +12,22 @@
 
     <style>
         :root {
-            --bg-gradient: linear-gradient(135deg, #fdf4ff 0%, #f0f9ff 50%, #fef3c7 100%);
-            --sidebar-bg: rgba(255, 255, 255, 0.92);
-            --sidebar-border: rgba(59, 130, 246, 0.2);
-            --main-bg: rgba(255, 255, 255, 0.65);
-            --card-bg: linear-gradient(135deg, #ffffff, #fef9ff);
-            --text-primary: #1e293b;
-            --text-secondary: #5b6e8c;
-            --text-muted: #94a3b8;
-            --bubble-assistant: #ffffff;
-            --bubble-assistant-border: rgba(139, 92, 246, 0.15);
-            --top-bar-bg: rgba(255, 255, 255, 0.8);
-            --input-wrapper-bg: #ffffff;
-            --input-border: #eef2f6;
-            --btn-top-bg: #ffffff;
+            --bg-gradient: linear-gradient(135deg, #ecfeff 0%, #eff6ff 50%, #f0fdf4 100%);
+            --sidebar-bg: rgba(255, 255, 255, 0.85);
+            --sidebar-border: rgba(16, 185, 129, 0.2);
+            --main-bg: rgba(255, 255, 255, 0.4);
+            --card-bg: rgba(255, 255, 255, 0.9);
+            --text-primary: #0f172a;
+            --text-secondary: #334155;
+            --text-muted: #64748b;
+            --bubble-assistant: rgba(255, 255, 255, 0.95);
+            --bubble-assistant-border: rgba(16, 185, 129, 0.2);
+            --top-bar-bg: rgba(255, 255, 255, 0.7);
+            --input-wrapper-bg: rgba(255, 255, 255, 0.95);
+            --input-border: rgba(16, 185, 129, 0.2);
+            --btn-top-bg: rgba(255, 255, 255, 0.9);
+            --accent-primary: #0ea5e9;
+            --accent-secondary: #10b981;
         }
 
         [data-theme='dark'] {
@@ -61,7 +63,7 @@
             left: 0;
             width: 100%;
             height: 100%;
-            background: linear-gradient(125deg, rgba(59, 130, 246, 0.03) 0%, rgba(139, 92, 246, 0.03) 25%, rgba(236, 72, 153, 0.03) 50%, rgba(245, 158, 11, 0.03) 75%, rgba(16, 185, 129, 0.03) 100%);
+            background: linear-gradient(125deg, rgba(14, 165, 233, 0.05) 0%, rgba(16, 185, 129, 0.05) 50%, rgba(56, 189, 248, 0.05) 100%);
             animation: gradientFlow 12s ease infinite;
             background-size: 400% 400%;
             z-index: 0;
@@ -185,7 +187,7 @@
         .brand-icon .icon-wrapper {
             width: 42px;
             height: 42px;
-            background: linear-gradient(135deg, #3b82f6, #8b5cf6, #ec4899);
+            background: linear-gradient(135deg, #0ea5e9, #10b981);
             border-radius: 14px;
             display: flex;
             align-items: center;
@@ -842,7 +844,10 @@
                     <div class="icon-wrapper"><i class="fas fa-brain"></i></div>
                     <h1>SecondBrain PRO</h1>
                 </div>
-                <div class="brand-tag"><i class="fas fa-gem"></i> RETRIEVAL AUGMENTED GENERATION ·</div>
+                <div class="brand-tag" id="userBadge"><i class="fas fa-user-circle"></i> Authenticated User</div>
+                <a href="/profile" style="display: block; margin-top: 10px; font-size: 11px; color: #10b981; text-decoration: none; font-weight: 600;">
+                    <i class="fas fa-external-link-alt"></i> View Profile & Files
+                </a>
             </div>
 
             <div class="stats-grid">
@@ -860,18 +865,37 @@
                 </div>
             </div>
 
-            <div class="recent-docs">
+            <div class="sidebar-sections">
                 <div class="section-header">
-                    <h3><i class="far fa-clock"></i> RECENT DOCUMENTS</h3>
+                    <h3><i class="fas fa-link"></i> RELATED PAGES</h3>
                 </div>
-                <div id="docList">
-                    <div class="doc-item" style="opacity:0.5">
-                        <div class="doc-info">
-                            <div class="doc-name">Loading...</div>
-                        </div>
-                    </div>
+                <div class="nav-links">
+                    <a href="#" class="nav-item"><i class="fas fa-history"></i> Search History</a>
+                    <a href="#" class="nav-item"><i class="fas fa-star"></i> Bookmarked Chunks</a>
+                    <a href="#" class="nav-item"><i class="fas fa-project-diagram"></i> Knowledge Map</a>
+                </div>
+
+                <div class="section-header" style="margin-top: 24px;">
+                    <h3><i class="fas fa-cog"></i> OPTIONS</h3>
+                </div>
+                <div class="nav-links">
+                    <a href="/profile" class="nav-item"><i class="fas fa-user-cog"></i> Profile Settings</a>
+                    <a href="/profile" class="nav-item"><i class="fas fa-database"></i> Manage Library</a>
+                    <a href="#" class="nav-item"><i class="fas fa-plug"></i> API Integrations</a>
                 </div>
             </div>
+
+            <style>
+                .sidebar-sections { padding: 20px 0; flex: 1; }
+                .nav-links { padding: 0 12px; }
+                .nav-item { 
+                    display: flex; align-items: center; gap: 12px; padding: 12px 16px; 
+                    color: var(--text-secondary); text-decoration: none; font-size: 13px; 
+                    font-weight: 600; border-radius: 14px; transition: all 0.3s;
+                }
+                .nav-item i { width: 20px; color: #10b981; }
+                .nav-item:hover { background: rgba(16, 185, 129, 0.05); color: #10b981; }
+            </style>
 
             <div class="sidebar-footer">
                 <div class="mode-toggle" id="modeToggle">
@@ -893,6 +917,9 @@
                     </div>
                 </div>
                 <div class="privacy-badge"><i class="fas fa-shield-alt"></i> Privacy-first · Local RAG</div>
+                <a href="/logout" style="display: flex; align-items: center; justify-content: center; gap: 8px; margin-top: 16px; padding: 12px; background: rgba(239, 68, 68, 0.1); color: #ef4444; text-decoration: none; border-radius: 16px; font-size: 12px; font-weight: 700; border: 1px solid rgba(239, 68, 68, 0.2); transition: all 0.3s;" onmouseover="this.style.background='rgba(239, 68, 68, 0.2)'" onmouseout="this.style.background='rgba(239, 68, 68, 0.1)'">
+                    <i class="fas fa-sign-out-alt"></i> Logout Session
+                </a>
             </div>
         </aside>
 
@@ -964,7 +991,7 @@
         bgRenderer.setSize(window.innerWidth, window.innerHeight);
 
         const knotGeo = new THREE.TorusKnotGeometry(1.2, 0.28, 180, 32, 3, 4);
-        const knotMat = new THREE.MeshStandardMaterial({ color: 0x3b82f6, emissive: 0x1e3a8a, emissiveIntensity: 0.2, metalness: 0.7, roughness: 0.3 });
+        const knotMat = new THREE.MeshStandardMaterial({ color: 0x10b981, emissive: 0x065f46, emissiveIntensity: 0.2, metalness: 0.7, roughness: 0.3 });
         const knot = new THREE.Mesh(knotGeo, knotMat);
         knot.position.set(0, 0, -5);
         scene.add(knot);
@@ -1010,37 +1037,9 @@
                 // Update Numeric Stats
                 document.getElementById('statFiles').innerText = data.files ? data.files.length : 0;
                 document.getElementById('statChunks').innerText = data.total_chunks || 0;
-                
-                // Update File List
-                const docList = document.getElementById('docList');
-                let listHtml = '';
-                
-                if (data.files && data.files.length) {
-                    data.files.slice(0, 10).forEach(f => {
-                        const ext = f.split('.').pop().toLowerCase();
-                        let icon = 'fa-file-alt';
-                        if (ext === 'pdf') icon = 'fa-file-pdf'; 
-                        else if (['png', 'jpg', 'jpeg'].includes(ext)) icon = 'fa-file-image'; 
-                        else if (['xlsx', 'csv'].includes(ext)) icon = 'fa-file-excel';
-                        else if (['pptx', 'ppt'].includes(ext)) icon = 'fa-file-powerpoint';
-                        else if (['docx', 'doc'].includes(ext)) icon = 'fa-file-word';
-
-                        listHtml += `
-                            <div class="doc-item" onclick="document.getElementById('queryInput').value='Summarize ${f}'; sendQuery();">
-                                <div class="doc-icon"><i class="fas ${icon}"></i></div>
-                                <div class="doc-info">
-                                    <div class="doc-name">${f}</div>
-                                    <div class="doc-meta">Indexed locally</div>
-                                </div>
-                            </div>`;
-                    });
-                } else { 
-                    listHtml = '<div class="doc-item"><div class="doc-info"><div class="doc-name">No files indexed yet.</div></div></div>'; 
+                if (data.user) {
+                    document.getElementById('userBadge').innerHTML = `<i class="fas fa-user-circle"></i> ${data.user.toUpperCase()}`;
                 }
-                
-                // Only update DOM if HTML changed to prevent flickering
-                if(docList.innerHTML !== listHtml) docList.innerHTML = listHtml;
-
             } catch (e) {
                 console.error("Failed to fetch status:", e);
             }

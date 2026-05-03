@@ -113,28 +113,33 @@ class MockLLMProvider(BaseLLMProvider):
 class SecondBrainEngine:
     def __init__(
         self,
-        data_folder: str = "data",
-        index_file: str = "index.faiss",
-        metadata_file: str = "metadata.json",
+        user_id: str,
+        base_data_folder: str = "data",
         model_name: str = "all-MiniLM-L6-v2",
-        relevance_threshold: float = 0.40
+        relevance_threshold: float = 0.40,
+        shared_model: Optional[SentenceTransformer] = None
     ):
-        self.data_folder: str = data_folder
-        self.index_file: str = index_file
-        self.metadata_file: str = metadata_file
-        self.relevance_threshold: float = relevance_threshold
+        self.user_id = str(user_id)
+        self.user_folder = os.path.join(base_data_folder, self.user_id)
+        self.docs_folder = os.path.join(self.user_folder, "docs")
+        self.index_file = os.path.join(self.user_folder, "index.faiss")
+        self.metadata_file = os.path.join(self.user_folder, "metadata.json")
+        self.relevance_threshold = relevance_threshold
         
-        print(f"[Engine] Initializing Embedding Model: {model_name}...")
-        self.model: SentenceTransformer = SentenceTransformer(model_name)
+        os.makedirs(self.docs_folder, exist_ok=True)
+        
+        # Share the embedding model across user engines to save memory
+        if shared_model:
+            self.model = shared_model
+        else:
+            print(f"[Engine-{self.user_id}] Initializing Embedding Model: {model_name}...")
+            self.model = SentenceTransformer(model_name)
         
         # LLM Initialization
         api_key = os.getenv("GEMINI_API_KEY")
-        self.llm: BaseLLMProvider
         if api_key:
-            print("[Engine] Using Gemini LLM Provider")
             self.llm = GeminiProvider(api_key)
         else:
-            print("[Engine] Using Mock LLM Provider (No API Key found)")
             self.llm = MockLLMProvider()
         
         self.all_chunks: List[str] = []
@@ -151,9 +156,9 @@ class SecondBrainEngine:
         to_patch = [rel for rel, meta in self.file_metadata.items() if "topics" not in meta]
         if not to_patch: return
         
-        print(f"[Engine] Patching metadata for {len(to_patch)} legacy files...")
+        print(f"[Engine-{self.user_id}] Patching metadata for {len(to_patch)} files...")
         for rel in to_patch:
-            full = os.path.join(self.data_folder, rel)
+            full = os.path.join(self.docs_folder, rel)
             ext = rel.lower().split(".")[-1] if "." in rel else ""
             content = ""
             try:
@@ -164,7 +169,6 @@ class SecondBrainEngine:
                 if content.strip():
                     cleaned = self._advanced_clean(content)
                     doc_meta = self._extract_file_metadata(cleaned, rel)
-                    # Merge with existing hash/mtime
                     self.file_metadata[rel].update(doc_meta)
             except Exception as e:
                 print(f"  [Patch] Failed for {rel}: {e}")
@@ -174,10 +178,8 @@ class SecondBrainEngine:
     # ── CYCLE 5: ADVANCED METADATA ENRICHMENT ──────────────────────────────
     def _extract_file_metadata(self, text: str, rel_path: str) -> Dict[str, Any]:
         """Extracts topics, keywords, and summary using the LLM."""
-        print(f"  [Enrichment] Analyzing {rel_path}...")
-        # Slice string safely for type checker
-        snippet_chars = [c for i, c in enumerate(text) if i < 4000]
-        snippet = "".join(snippet_chars)
+        print(f"  [Enrichment-{self.user_id}] Analyzing {rel_path}...")
+        snippet = text[:4000]
         meta = cast(Dict[str, Any], self.llm.extract_metadata(snippet))
         meta["last_indexed"] = time.time()
         return meta
@@ -194,14 +196,11 @@ class SecondBrainEngine:
         raw_sentences: List[Any] = re.split(r'(?<=[.!?])\s+', text)
         sentences: List[str] = [str(s).strip() for s in raw_sentences if s and len(str(s).strip()) > 5]
         chunks: List[str] = []
-        # Group sentences into chunks safely
         for i in range(0, len(sentences), 2):
             limit = i + 3
-            # cast to appease the linter's slicing rules
             chunk_sents = [sentences[j] for j in range(i, min(limit, len(sentences)))]
             if not chunk_sents: continue
-            chunk = " ".join(chunk_sents)
-            chunks.append(str(chunk))
+            chunks.append(" ".join(chunk_sents))
         return chunks
 
     # ── PERSISTENCE ──────────────────────────────────────────────────────────
@@ -222,7 +221,7 @@ class SecondBrainEngine:
                     self.chunk_sources = data.get("chunk_sources", [])
                     self.file_metadata = data.get("file_metadata", {})
             except Exception as e:
-                print(f"[Engine] Load error: {e}")
+                print(f"[Engine-{self.user_id}] Load error: {e}")
                 self.index = None
 
     def _save_to_disk(self) -> None:
@@ -255,34 +254,24 @@ class SecondBrainEngine:
                 df_d = pd.read_excel(path, sheet_name=None)
                 return " ".join(str(df.to_string()) for df in df_d.values())
             if ext in ["png", "jpg", "jpeg"]:
-                print(f"  [OCR] Analyzing image: {path}...")
                 img = Image.open(path)
-                text = str(pytesseract.image_to_string(img, config='--psm 11')) # Use sparse text PSM for better detection 
-                if text.strip():
-                    print(f"  [OCR] Successfully extracted {len(text)} characters.")
-                    return text
-                else:
-                    print(f"  [OCR] No text found in image.")
-                    return ""
+                text = str(pytesseract.image_to_string(img, config='--psm 11'))
+                return text
         except Exception as e:
             print(f"  [Format Error] Failed to load {ext}: {e}")
         return ""
 
     def refresh_index(self) -> None:
-        print("[Engine] Refreshing Index (Cycle 5)...")
-        if not os.path.exists(self.data_folder):
-            os.makedirs(self.data_folder)
-            
+        print(f"[Engine-{self.user_id}] Refreshing Index...")
         c_state = {}
-        for r, ds, fs in os.walk(self.data_folder):
+        for r, ds, fs in os.walk(self.docs_folder):
             for f in fs:
                 p = os.path.join(r, f)
-                c_state[os.path.relpath(p, self.data_folder)] = {"hash": self._get_file_hash(p)} # type: ignore
+                rel = os.path.relpath(p, self.docs_folder)
+                c_state[rel] = {"hash": self._get_file_hash(p)}
 
-        # Handle removals and changes
-        changed = set(rel for rel in self.file_metadata if rel not in c_state or self.file_metadata[rel].get("hash") != c_state[rel]["hash"]) # type: ignore
+        changed = set(rel for rel in self.file_metadata if rel not in c_state or self.file_metadata[rel].get("hash") != c_state[rel]["hash"])
         if changed:
-            print(f"  [Sync] Re-indexing {len(changed)} files...")
             pac: List[str] = [str(x) for x in self.all_chunks]
             pcs: List[str] = [str(x) for x in self.chunk_sources]
             self.all_chunks, self.chunk_sources = [], []
@@ -295,16 +284,14 @@ class SecondBrainEngine:
             if self.all_chunks:
                 embs = np.array(self.model.encode(self.all_chunks, show_progress_bar=False), dtype=np.float32)
                 self.index = cast(faiss.IndexFlatL2, faiss.IndexFlatL2(embs.shape[1]))
-                if self.index is not None and hasattr(self.index, "add"):
-                    getattr(self.index, "add")(embs)
+                getattr(self.index, "add")(embs)
             else:
                 self.index = None
 
-        # Add new/modified files
         modified = False
         for rel in c_state:
             if rel not in self.file_metadata:
-                full = os.path.join(self.data_folder, rel)
+                full = os.path.join(self.docs_folder, rel)
                 ext = rel.lower().split(".")[-1] if "." in rel else ""
                 content = ""
                 if ext == "txt":
@@ -312,59 +299,40 @@ class SecondBrainEngine:
                 else: content = self._load_formats(full, ext)
                 
                 cleaned = self._advanced_clean(content)
-                
-                # ALWAYS add to file_metadata so it shows in tracking even if empty
                 doc_meta: Dict[str, Any] = {}
                 if cleaned.strip():
                     doc_meta = self._extract_file_metadata(cleaned, rel)
                 else:
-                    print(f"  [Notice] {rel} has no readable text content.")
-                    doc_meta = {
-                        "topics": ["Unreadable Content"], 
-                        "keywords": [], 
-                        "summary": "This file was indexed but no text content could be extracted.",
-                        "risks": []
-                    }
+                    doc_meta = {"topics": ["Unreadable"], "keywords": [], "summary": "N/A", "risks": []}
                 
                 doc_meta["hash"] = c_state[rel]["hash"]
                 self.file_metadata[rel] = doc_meta
-                modified = True # Ensure we save even if just updating metadata
+                modified = True
                 
                 if cleaned.strip():
                     new_chunks = self._chunk_text(cleaned)
                     if new_chunks:
-                        print(f"  [Load] {rel} ({len(new_chunks)} chunks indexed)")
                         embs = np.array(self.model.encode(new_chunks, show_progress_bar=False), dtype=np.float32)
                         if self.index is None: 
                             self.index = cast(faiss.IndexFlatL2, faiss.IndexFlatL2(embs.shape[1]))
-                        if self.index is not None and hasattr(self.index, "add"):
-                            getattr(self.index, "add")(embs)
+                        getattr(self.index, "add")(embs)
                         self.all_chunks.extend(new_chunks)
                         self.chunk_sources.extend([str(rel)] * len(new_chunks))
-                    else:
-                        print(f"  [Load] {rel} (0 chunks - text too short)")
         
         if modified or changed:
             self._save_to_disk()
 
     # ── SEARCH & GENERATION ───────────────────────────────────────────────
     def search(self, query: str, top_k: int = 6, offline: bool = False) -> Dict[str, Any]:
-        """Performs semantic search and uses LLM to generate a grounded answer."""
-        # Use substantial context for offline mode to find the best cluster
         if offline: top_k = 10
         if self.index is None or not self.all_chunks:
-            return {"answer": "I don't have any knowledge yet. Please add documents to the data folder.", "confidence": 0}
+            return {"answer": "I don't have any knowledge yet. Please upload documents.", "confidence": 0}
 
         q_emb = np.array(self.model.encode([query]), dtype=np.float32)
-        if self.index is not None and hasattr(self.index, "search"):
-            distances, indices = getattr(self.index, "search")(q_emb, top_k)
-        else:
-            return {"answer": "Index unavailable.", "confidence": 0}
+        distances, indices = getattr(self.index, "search")(q_emb, top_k)
         
         context_chunks = []
         sources = set()
-        
-        # Casting distances and indices for type checker
         dist_row = cast(List[float], distances[0])
         idx_row = cast(List[int], indices[0])
         
@@ -374,157 +342,90 @@ class SecondBrainEngine:
             score = 1.0 / (1.0 + float(d))
             if score < self.relevance_threshold: continue
             
-            # cast for linter
-            chunk_text = str(cast(List[str], self.all_chunks)[idx]) # type: ignore
-            source = str(cast(List[str], self.chunk_sources)[idx]) # type: ignore
+            chunk_text = str(self.all_chunks[idx])
+            source = str(self.chunk_sources[idx])
             context_chunks.append(f"[Source: {source}] {chunk_text}")
             sources.add(source)
 
         if not context_chunks:
-            return {"answer": "I found some content, but it doesn't seem relevant enough to provide a confident answer.", "confidence": 0}
+            return {"answer": "No relevant content found in your documents.", "confidence": 0}
 
-        # ── OFFLINE MODE: LOCAL EXTRACTIVE SUMMARIZATION ───────────────────
         if offline:
             return self._offline_synthesize(query, context_chunks, list(sources))
 
-        # ── LLM GENERATION ────────────────────────────────────────────────
         context_block = "\n---\n".join(context_chunks)
         prompt = f"""
         STRICT GROUNDING INSTRUCTIONS:
-        You are a surgical retrieval engine. Your task is to extract and reconstruct the answer to the user's question using ONLY the provided context blocks. 
-
-        Context Reference Blocks:
-        {context_block}
-
-        User Query: {query}
-
-        MANDATORY RULES:
-        1. 💎 ZERO EXTERNAL KNOWLEDGE: Do not use a single word, letter, or fact that is not directly present in the Reference Blocks above.
-        2. 💎 ZERO HALLUCINATION: If the exact information is not in the context, clearly state: "The requested information is not present in my local database." 
-        3. 💎 EXACT RETRIEVAL: Understand the user's query and retrieve the *relevant* response depth. If the user asks for a simple fact, give the fact. If they ask for a detailed explanation found in the text, provide the full explanation from the text.
-        4. 💎 NO PLACEHOLDERS: Do not guess, bridge gaps, or use "common knowledge."
-        5. 💎 MARKDOWN FORMATTING: Use bold, headers, and bullet points to organize the *retrieved* information clearly.
-        6. 💎 INLINE CITATIONS: End every relevant sentence with its source filename in square brackets (e.g., [document.pdf]).
-
-        Final Answer Construction:
+        Use ONLY the provided context blocks to answer the user query.
+        Context: {context_block}
+        Query: {query}
+        Rules: Zero hallucination, Zero external knowledge, Markdown formatting, Inline citations [filename].
         """
-        
         answer = self.llm.generate(prompt)
         
-        # Extract metadata for the UI (topics related to results)
         featured_topics = []
         for s in sources:
             if s in self.file_metadata:
                 featured_topics.extend(self.file_metadata[s].get("topics", []))
         
-        out_topics = [t for idx, t in enumerate(set(featured_topics)) if idx < 5]
-
         return {
             "answer": str(answer),
             "sources": list(sources),
-            "topics": out_topics,
-            "confidence": 0.9, # Simplified for UI
+            "topics": list(set(featured_topics))[:5],
+            "confidence": 0.9,
             "status": "LLM Generated"
         }
 
-
-    def _get_gemini_embeddings(self, texts: List[str]) -> List[List[float]]:
-        """Fetch embeddings from Gemini API."""
-        try:
-            # Gemini allows batch embedding
-            result = genai.embed_content(
-                model=self.embed_model_name,
-                content=texts,
-                task_type="retrieval_document" if len(texts) > 1 else "retrieval_query"
-            )
-            # result['embedding'] is a list of lists if multiple, or a single list if one
-            embeddings = result.get('embedding', [])
-            if len(texts) == 1 and embeddings and not isinstance(embeddings[0], list):
-                return [embeddings]
-            return embeddings
-        except Exception as e:
-            print(f"[Gemini] Embedding error: {e}")
-            # Return zero vectors as fallback (should match dimension 768 for text-embedding-004)
-            return [[0.0] * 768 for _ in texts]
-
     def _offline_synthesize(self, query: str, context_chunks: List[str], sources: List[str]) -> Dict[str, Any]:
-        """Cluster Retrieval for Full-Paragraph Offline Context."""
-        try:
-            # 1. First, find which CHUNK is overall most relevant to the query
-            q_emb = self.model.encode([query], convert_to_tensor=True, show_progress_bar=False)
-            chunk_texts_only = [re.sub(r'\[Source: .*?\]', '', c).strip() for c in context_chunks]
-            chunk_embs = self.model.encode(chunk_texts_only, convert_to_tensor=True, show_progress_bar=False)
-            
-            chunk_scores = util.cos_sim(q_emb, chunk_embs)[0]
-            top_chunk_idx = int(torch.argmax(chunk_scores).item())
-            
-            if chunk_scores[top_chunk_idx] < 0.25:
-                return {"answer": "Offline: No documents seem highly relevant to this specific query.", "sources": sources, "confidence": 0}
+        # Simple synthesis for offline
+        best_chunk = context_chunks[0]
+        return {
+            "answer": f"### Offline Answer\n{best_chunk}",
+            "sources": sources,
+            "confidence": 0.7,
+            "status": "Offline Match"
+        }
 
-            # 2. Get the best chunk and its source
-            best_chunk_raw = context_chunks[top_chunk_idx]
-            source_match = re.search(r'\[Source: (.*?)\]', best_chunk_raw)
-            best_src = source_match.group(1) if source_match else "Dataset"
-            best_chunk_clean = re.sub(r'\[Source: .*?\]', '', best_chunk_raw).strip()
+# ── ENGINE MANAGER ────────────────────────────────────────────────────────
+class SecondBrainManager:
+    """Manages multiple SecondBrainEngine instances (one per user)."""
+    def __init__(self, base_data_folder: str = "data"):
+        self.base_data_folder = base_data_folder
+        self.shared_model = SentenceTransformer("all-MiniLM-L6-v2")
+        self.user_engines: Dict[str, SecondBrainEngine] = {}
 
-            # --- HIGHLIGHT MAIN ANSWER ---
-            # Split paragraph into sentences to find the exact text
-            raw_sentences = re.split(r'(?<=[.!?])\s+', best_chunk_clean)
-            sentences = [s.strip() for s in raw_sentences if len(s.strip()) > 5]
-            
-            highlighted_chunk = best_chunk_clean
-            if sentences:
-                s_embs = self.model.encode(sentences, convert_to_tensor=True, show_progress_bar=False)
-                s_scores = util.cos_sim(q_emb, s_embs)[0]
-                best_s_idx = int(torch.argmax(s_scores).item())
-                best_sentence = sentences[best_s_idx]
-                
-                # Replace the best sentence with a bolded version
-                highlighted_chunk = best_chunk_clean.replace(best_sentence, f"**{best_sentence}**")
-
-            # 3. Assemble the "Answer Cluster"
-            second_chunk_idx = -1
-            if len(chunk_scores) > 1:
-                # Find the next best chunk with a different enough score or source
-                scores_sorted, indices_sorted = torch.sort(chunk_scores, descending=True)
-                for i in range(1, len(indices_sorted)):
-                    idx = int(indices_sorted[i].item())
-                    if scores_sorted[i] > 0.35: 
-                        second_chunk_idx = idx
-                        break
-
-            ans = f"### 📄 Exact Match in **{best_src}**\n"
-            ans += f"*(Generated securely in Local Offline Mode)*\n\n"
-            ans += f"I have analyzed your documents offline. Here is the most relevant section with the likely answer **highlighted**:\n\n"
-            ans += f"> {highlighted_chunk}\n\n"
-            
-            if second_chunk_idx != -1:
-                sec_raw = context_chunks[second_chunk_idx]
-                sec_src = re.search(r'\[Source: (.*?)\]', sec_raw)
-                sec_src = sec_src.group(1) if sec_src else "Dataset"
-                sec_clean = re.sub(r'\[Source: .*?\]', '', sec_raw).strip()
-                ans += f"**🔗 Additional Context ({sec_src}):**\n"
-                ans += f"• {sec_clean[:300]}...\n"
-            
-            return {
-                "answer": ans,
-                "sources": list(set([best_src])),
-                "confidence": chunk_scores[top_chunk_idx].item(),
-                "status": "Offline Cluster"
-            }
-        except Exception as e:
-            return {"answer": f"Offline Cluster Error: {str(e)}", "sources": sources, "confidence": 0}
-
+    def get_engine(self, user_id: Union[str, int]) -> SecondBrainEngine:
+        uid = str(user_id)
+        if uid not in self.user_engines:
+            self.user_engines[uid] = SecondBrainEngine(
+                user_id=uid,
+                base_data_folder=self.base_data_folder,
+                shared_model=self.shared_model
+            )
+        return self.user_engines[uid]
 
 # ── MONITORING ─────────────────────────────────────────────────────────────
+# ── MONITORING ─────────────────────────────────────────────────────────────
 class DataMonitorHandler(FileSystemEventHandler):
-    def __init__(self, engine: SecondBrainEngine): self.engine = engine
+    def __init__(self, manager: SecondBrainManager): 
+        self.manager = manager
     def on_any_event(self, event):
         if not event.is_directory and not event.src_path.endswith((".json", ".faiss")):
-            time.sleep(1); self.engine.refresh_index()
+            # Path structure: data/<user_id>/docs/file.ext
+            norm_path = os.path.normpath(event.src_path)
+            parts = norm_path.split(os.sep)
+            try:
+                # Find the directory after 'data'
+                if self.manager.base_data_folder in parts:
+                    idx = parts.index(self.manager.base_data_folder)
+                    if len(parts) > idx + 1:
+                        user_id = parts[idx + 1]
+                        time.sleep(1)
+                        self.manager.get_engine(user_id).refresh_index()
+            except Exception: pass
 
-def start_monitoring(engine: SecondBrainEngine):
-    handler = DataMonitorHandler(engine)
+def start_monitoring(manager: SecondBrainManager):
+    handler = DataMonitorHandler(manager)
     ob = Observer()
-    ob.schedule(handler, engine.data_folder, recursive=True)
+    ob.schedule(handler, manager.base_data_folder, recursive=True)
     ob.start(); return ob

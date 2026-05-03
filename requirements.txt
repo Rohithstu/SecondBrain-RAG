@@ -2,6 +2,9 @@
 faiss-cpu
 numpy
 flask
+flask-sqlalchemy
+flask-login
+flask-bcrypt
 PyPDF2
 pytesseract
 Pillow
