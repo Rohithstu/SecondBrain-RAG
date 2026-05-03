@@ -3,6 +3,7 @@ from flask_sqlalchemy import SQLAlchemy
 from flask_login import LoginManager, login_user, logout_user, login_required, current_user
 from flask_bcrypt import Bcrypt
 from werkzeug.utils import secure_filename
+from datetime import timedelta
 from sb_engine import SecondBrainManager, start_monitoring
 from models import db, User, Document
 import os
@@ -12,6 +13,13 @@ load_dotenv()
 
 app = Flask(__name__)
 app.config['SECRET_KEY'] = os.getenv("SECRET_KEY", "super-secret-key-123")
+
+# Session Persistence
+app.config['REMEMBER_COOKIE_DURATION'] = timedelta(days=30)
+app.config['PERMANENT_SESSION_LIFETIME'] = timedelta(days=30)
+app.config['SESSION_COOKIE_SECURE'] = True  # Required for HTTPS on Render
+app.config['SESSION_COOKIE_HTTPONLY'] = True
+app.config['SESSION_COOKIE_SAMESITE'] = 'Lax'
 
 # Use PostgreSQL if available (Render), otherwise SQLite (Local)
 db_url = os.getenv("DATABASE_URL")
@@ -60,7 +68,7 @@ def login():
         password = request.form.get("password")
         user = User.query.filter_by(username=username).first()
         if user and bcrypt.check_password_hash(user.password, password):
-            login_user(user)
+            login_user(user, remember=True)
             return redirect(url_for('index'))
         flash("Invalid username or password", "danger")
     return render_template("login.html")
