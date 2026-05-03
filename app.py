@@ -156,12 +156,17 @@ def upload_file():
         filepath = os.path.join(engine.docs_folder, filename)
         file.save(filepath)
         
+        # Trigger immediate ingestion (don't wait for watcher)
+        try:
+            engine.ingest_new_files()
+        except Exception as e:
+            print(f"Ingestion error: {e}")
+        
         # Track in DB
         new_doc = Document(filename=filename, user_id=current_user.id)
         db.session.add(new_doc)
         db.session.commit()
         
-        # Monitor will handle re-indexing automatically
         return jsonify({"message": f"Successfully uploaded {filename}", "filename": filename}), 200
 
 if __name__ == "__main__":

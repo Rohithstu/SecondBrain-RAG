@@ -28,7 +28,7 @@ from PIL import Image # type: ignore
 import pytesseract # type: ignore
 
 # Monitoring
-from watchdog.observers import Observer # type: ignore
+from watchdog.observers.polling import PollingObserver as Observer # type: ignore
 from watchdog.events import FileSystemEventHandler # type: ignore
 
 
@@ -432,7 +432,9 @@ class DataMonitorHandler(FileSystemEventHandler):
             except Exception: pass
 
 def start_monitoring(manager: SecondBrainManager):
+    """Starts a polling monitor to catch file changes in Docker environments."""
     handler = DataMonitorHandler(manager)
-    ob = Observer()
+    ob = Observer() # This is now PollingObserver
     ob.schedule(handler, manager.base_data_folder, recursive=True)
-    ob.start(); return ob
+    ob.start()
+    return ob
