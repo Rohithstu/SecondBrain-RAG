@@ -9,6 +9,7 @@ flask-sqlalchemy
 flask-login
 flask-bcrypt
 gunicorn
+psycopg2-binary
 
 # Document Processing
 PyPDF2

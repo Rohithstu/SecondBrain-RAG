@@ -12,7 +12,13 @@ load_dotenv()
 
 app = Flask(__name__)
 app.config['SECRET_KEY'] = os.getenv("SECRET_KEY", "super-secret-key-123")
-app.config['SQLALCHEMY_DATABASE_URI'] = 'sqlite:///secondbrain_users.db'
+
+# Use PostgreSQL if available (Render), otherwise SQLite (Local)
+db_url = os.getenv("DATABASE_URL")
+if db_url and db_url.startswith("postgres://"):
+    db_url = db_url.replace("postgres://", "postgresql://", 1)
+app.config['SQLALCHEMY_DATABASE_URI'] = db_url or 'sqlite:///secondbrain_users.db'
+
 app.config['UPLOAD_FOLDER'] = 'data'
 os.makedirs(app.config['UPLOAD_FOLDER'], exist_ok=True)
 
