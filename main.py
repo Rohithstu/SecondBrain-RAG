@@ -23,8 +23,16 @@ def main():
     print("  SecondBrain - Advanced Answer Assembly (Cycle 4)")
     print("=" * 80)
 
-    engine = SecondBrainEngine()
-    monitor = start_monitoring(engine)
+    engine = SecondBrainEngine(user_id="terminal_user")
+    # Terminal mode simplified monitoring (doesn't use Manager)
+    from watchdog.observers import Observer
+    from sb_engine import DataMonitorHandler
+    handler = DataMonitorHandler(None) # Manager is None, on_any_event will handle it
+    # Actually sb_engine.py DataMonitorHandler expects a manager.
+    # Let's just disable monitoring for terminal mode or use a manager.
+    from sb_engine import SecondBrainManager, start_monitoring
+    manager = SecondBrainManager()
+    monitor = start_monitoring(manager)
 
     print("\n[!] Answer Assembly Layer is Active.")
     print("[!] Enter your question (or 'exit' to quit).")

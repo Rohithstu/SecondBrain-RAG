@@ -4,7 +4,7 @@ from dotenv import load_dotenv
 
 load_dotenv()
 
-engine = SecondBrainEngine()
+engine = SecondBrainEngine(user_id='test_user')
 query = "Explain Apache Sqoop" # Example based on Unit 2.pdf content I saw in metadata
 result = engine.search(query)
 print(f"Query: {query}")

@@ -904,7 +904,7 @@
                         <span id="modeText">Online Mode</span>
                     </div>
                     <label class="switch">
-                        <input type="checkbox" id="offlineSwitch" checked>
+                        <input type="checkbox" id="modeSwitch" checked>
                         <span class="slider"></span>
                     </label>
                 </div>
@@ -1067,14 +1067,14 @@
         }
 
         // Mode Toggle Logic
-        const offlineSwitch = document.getElementById('offlineSwitch');
+        const modeSwitch = document.getElementById('modeSwitch');
         const modeText = document.getElementById('modeText');
         const modeIcon = document.getElementById('modeIcon');
         const statusModel = document.getElementById('statusModel');
         const systemStatus = document.getElementById('systemStatus');
 
-        offlineSwitch.addEventListener('change', () => {
-            const isOnline = offlineSwitch.checked;
+        modeSwitch.addEventListener('change', () => {
+            const isOnline = modeSwitch.checked;
             if (isOnline) {
                 modeText.innerText = "Online Mode";
                 modeIcon.className = "fas fa-globe";
@@ -1094,7 +1094,7 @@
 
         async function sendQuery() {
             const query = queryInput.value.trim(); if (!query) return;
-            const isOffline = !offlineSwitch.checked;
+            const isOffline = !modeSwitch.checked;
             addMessage('user', query); queryInput.value = '';
 
             const typing = document.createElement('div'); typing.className = 'message assistant'; typing.id = 'typing'; typing.innerHTML = `<div class="avatar"><i class="fas fa-brain"></i></div><div class="bubble"><div class="typing"><span></span><span></span><span></span></div></div>`;

@@ -12,10 +12,8 @@ import json
 import hashlib
 import numpy as np # type: ignore
 import faiss # type: ignore
-import torch # type: ignore
 import time
 import requests # type: ignore
-from sentence_transformers import SentenceTransformer, util # type: ignore
 from threading import Thread
 import google.generativeai as genai # type: ignore
 from typing import List, Dict, Set, Any, cast, Tuple, Optional, Union, SupportsIndex
@@ -46,7 +44,7 @@ class BaseLLMProvider:
 class GeminiProvider(BaseLLMProvider):
     def __init__(self, api_key: str):
         genai.configure(api_key=api_key)
-        self.model_name = "gemini-2.5-flash" 
+        self.model_name = "gemini-1.5-flash" 
         self.model = genai.GenerativeModel(self.model_name)
         print(f"[Gemini] Initialized with model: {self.model_name}")
 
@@ -116,8 +114,7 @@ class SecondBrainEngine:
         user_id: str,
         base_data_folder: str = "data",
         model_name: str = "all-MiniLM-L6-v2",
-        relevance_threshold: float = 0.40,
-        shared_model: Optional[SentenceTransformer] = None
+        relevance_threshold: float = 0.40
     ):
         self.user_id = str(user_id)
         self.user_folder = os.path.join(base_data_folder, self.user_id)
@@ -128,19 +125,16 @@ class SecondBrainEngine:
         
         os.makedirs(self.docs_folder, exist_ok=True)
         
-        # Share the embedding model across user engines to save memory
-        if shared_model:
-            self.model = shared_model
-        else:
-            print(f"[Engine-{self.user_id}] Initializing Embedding Model: {model_name}...")
-            self.model = SentenceTransformer(model_name)
-        
-        # LLM Initialization
+        # LLM & Embedding Initialization
         api_key = os.getenv("GEMINI_API_KEY")
         if api_key:
             self.llm = GeminiProvider(api_key)
+            self.embedding_model = "models/text-embedding-004"
+            print(f"[Engine-{self.user_id}] Using Gemini Embeddings ({self.embedding_model})")
         else:
             self.llm = MockLLMProvider()
+            self.embedding_model = None
+            print(f"[Engine-{self.user_id}] WARNING: No API Key. Embeddings will fail.")
         
         self.all_chunks: List[str] = []
         self.chunk_sources: List[str] = []
@@ -174,6 +168,25 @@ class SecondBrainEngine:
                 print(f"  [Patch] Failed for {rel}: {e}")
         
         self._save_to_disk()
+
+    def _get_embeddings(self, texts: List[str]) -> np.ndarray:
+        """Fetch embeddings using Gemini API or local fallback."""
+        if not self.embedding_model:
+            # Fallback/Error case
+            return np.zeros((len(texts), 768), dtype=np.float32)
+        
+        try:
+            # Batch request embeddings
+            result = genai.embed_content(
+                model=self.embedding_model,
+                content=texts,
+                task_type="retrieval_document"
+            )
+            return np.array(result['embedding'], dtype=np.float32)
+        except Exception as e:
+            print(f"[Engine-{self.user_id}] Embedding error: {e}")
+            # Return dummy vectors to avoid crash, though search will be broken
+            return np.zeros((len(texts), 768), dtype=np.float32)
 
     # ── CYCLE 5: ADVANCED METADATA ENRICHMENT ──────────────────────────────
     def _extract_file_metadata(self, text: str, rel_path: str) -> Dict[str, Any]:
@@ -282,7 +295,7 @@ class SecondBrainEngine:
             for s in changed: self.file_metadata.pop(str(s), None)
             
             if self.all_chunks:
-                embs = np.array(self.model.encode(self.all_chunks, show_progress_bar=False), dtype=np.float32)
+                embs = self._get_embeddings(self.all_chunks)
                 self.index = cast(faiss.IndexFlatL2, faiss.IndexFlatL2(embs.shape[1]))
                 getattr(self.index, "add")(embs)
             else:
@@ -312,7 +325,7 @@ class SecondBrainEngine:
                 if cleaned.strip():
                     new_chunks = self._chunk_text(cleaned)
                     if new_chunks:
-                        embs = np.array(self.model.encode(new_chunks, show_progress_bar=False), dtype=np.float32)
+                        embs = self._get_embeddings(new_chunks)
                         if self.index is None: 
                             self.index = cast(faiss.IndexFlatL2, faiss.IndexFlatL2(embs.shape[1]))
                         getattr(self.index, "add")(embs)
@@ -328,7 +341,7 @@ class SecondBrainEngine:
         if self.index is None or not self.all_chunks:
             return {"answer": "I don't have any knowledge yet. Please upload documents.", "confidence": 0}
 
-        q_emb = np.array(self.model.encode([query]), dtype=np.float32)
+        q_emb = self._get_embeddings([query])
         distances, indices = getattr(self.index, "search")(q_emb, top_k)
         
         context_chunks = []
@@ -391,7 +404,6 @@ class SecondBrainManager:
     """Manages multiple SecondBrainEngine instances (one per user)."""
     def __init__(self, base_data_folder: str = "data"):
         self.base_data_folder = base_data_folder
-        self.shared_model = SentenceTransformer("all-MiniLM-L6-v2")
         self.user_engines: Dict[str, SecondBrainEngine] = {}
 
     def get_engine(self, user_id: Union[str, int]) -> SecondBrainEngine:
@@ -399,8 +411,7 @@ class SecondBrainManager:
         if uid not in self.user_engines:
             self.user_engines[uid] = SecondBrainEngine(
                 user_id=uid,
-                base_data_folder=self.base_data_folder,
-                shared_model=self.shared_model
+                base_data_folder=self.base_data_folder
             )
         return self.user_engines[uid]
 

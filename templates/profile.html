@@ -231,7 +231,7 @@
                     </div>
                     <div class="file-info">
                         <div class="file-name" title="{{ doc.filename }}">{{ doc.filename }}</div>
-                        <div class="file-meta">Uploaded on {{ doc.id }}</div>
+                        <div class="file-meta">Uploaded on {{ doc.upload_date.strftime('%Y-%m-%d') }}</div>
                     </div>
                 </div>
                 {% endfor %}
