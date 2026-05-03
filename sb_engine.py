@@ -16,6 +16,7 @@ import time
 import requests # type: ignore
 from threading import Thread
 import google.generativeai as genai # type: ignore
+from fastembed import TextEmbedding # type: ignore
 from typing import List, Dict, Set, Any, cast, Tuple, Optional, Union, SupportsIndex
 
 # Format Support Imports
@@ -125,16 +126,18 @@ class SecondBrainEngine:
         
         os.makedirs(self.docs_folder, exist_ok=True)
         
-        # LLM & Embedding Initialization
+        # Local Embedding Initialization (Saves API Quota)
+        print(f"[Engine-{self.user_id}] Initializing Local FastEmbed (BGE-Small)...")
+        self.embedding_model = TextEmbedding(model_name="BAAI/bge-small-en-v1.5")
+        
+        # Gemini Generation Initialization
         api_key = os.getenv("GEMINI_API_KEY")
         if api_key:
             self.llm = GeminiProvider(api_key)
-            self.embedding_model = "models/text-embedding-004"
-            print(f"[Engine-{self.user_id}] Using Gemini Embeddings ({self.embedding_model})")
+            print(f"[Engine-{self.user_id}] Gemini Generation Layer Active.")
         else:
             self.llm = MockLLMProvider()
-            self.embedding_model = None
-            print(f"[Engine-{self.user_id}] WARNING: No API Key. Embeddings will fail.")
+            print(f"[Engine-{self.user_id}] WARNING: No API Key for Generation.")
         
         self.all_chunks: List[str] = []
         self.chunk_sources: List[str] = []
@@ -170,23 +173,16 @@ class SecondBrainEngine:
         self._save_to_disk()
 
     def _get_embeddings(self, texts: List[str]) -> np.ndarray:
-        """Fetch embeddings using Gemini API or local fallback."""
-        if not self.embedding_model:
-            # Fallback/Error case
-            return np.zeros((len(texts), 768), dtype=np.float32)
-        
+        """Fetch embeddings locally using FastEmbed (No API costs)."""
         try:
-            # Batch request embeddings
-            result = genai.embed_content(
-                model=self.embedding_model,
-                content=texts,
-                task_type="retrieval_document"
-            )
-            return np.array(result['embedding'], dtype=np.float32)
+            # FastEmbed handles batching and returns an iterator of arrays
+            embeddings_iter = self.embedding_model.embed(texts)
+            return np.array(list(embeddings_iter), dtype=np.float32)
         except Exception as e:
-            print(f"[Engine-{self.user_id}] Embedding error: {e}")
-            # Return dummy vectors to avoid crash, though search will be broken
-            return np.zeros((len(texts), 768), dtype=np.float32)
+            print(f"[Engine-{self.user_id}] Local Embedding error: {e}")
+            # Fallback to zero vector if something goes wrong
+            dim = 384 # BGE-Small dimension
+            return np.zeros((len(texts), dim), dtype=np.float32)
 
     # ── CYCLE 5: ADVANCED METADATA ENRICHMENT ──────────────────────────────
     def _extract_file_metadata(self, text: str, rel_path: str) -> Dict[str, Any]:
