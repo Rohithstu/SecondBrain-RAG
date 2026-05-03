@@ -1,10 +1,17 @@
-# sentence-transformers (Skipped Hugging Face)
+# Core ML
+sentence-transformers
+torch --index-url https://download.pytorch.org/whl/cpu
 faiss-cpu
 numpy
+
+# Web & Auth
 flask
 flask-sqlalchemy
 flask-login
 flask-bcrypt
+gunicorn
+
+# Document Processing
 PyPDF2
 pytesseract
 Pillow
@@ -12,9 +19,9 @@ python-docx
 python-pptx
 pandas
 openpyxl
+
+# Utils
 watchdog
 google-generativeai
 requests
 python-dotenv
-
-gunicorn
