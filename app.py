@@ -18,6 +18,8 @@ os.makedirs(app.config['UPLOAD_FOLDER'], exist_ok=True)
 
 # Extensions
 db.init_app(app)
+with app.app_context():
+    db.create_all()
 bcrypt = Bcrypt(app)
 login_manager = LoginManager(app)
 login_manager.login_view = 'login'
