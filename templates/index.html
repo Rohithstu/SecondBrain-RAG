@@ -1032,6 +1032,21 @@
         async function loadStats() {
             try {
                 const res = await fetch('/api/status');
+                if (!res.ok) {
+                    if (res.status === 401) {
+                        console.warn("Session expired. Redirecting to login...");
+                        window.location.href = "/login";
+                        return;
+                    }
+                    throw new Error(`Server returned ${res.status}`);
+                }
+                
+                const contentType = res.headers.get("content-type");
+                if (!contentType || !contentType.includes("application/json")) {
+                    console.error("Non-JSON response received from /api/status");
+                    return;
+                }
+
                 const data = await res.json();
                 
                 // Update Numeric Stats
@@ -1106,11 +1121,24 @@
                     headers: { 'Content-Type': 'application/json' }, 
                     body: JSON.stringify({ query, offline: isOffline }) 
                 });
+                
+                const typingElem = document.getElementById('typing');
+                if (typingElem) typingElem.remove();
+
+                if (!res.ok) {
+                    const errorData = await res.json().catch(() => ({}));
+                    addMessage('assistant', `❌ Error: ${errorData.message || 'The server encountered an issue.'}`);
+                    return;
+                }
+
                 const data = await res.json();
-                document.getElementById('typing').remove();
                 if (data.answer_data) addMessage('assistant', data.answer_data.answer, data.answer_data.sources, data.answer_data.confidence);
                 else addMessage('assistant', 'Error parsing response.');
-            } catch (e) { document.getElementById('typing').remove(); addMessage('assistant', '⚠️ Connection error.'); }
+            } catch (e) { 
+                const typingElem = document.getElementById('typing');
+                if (typingElem) typingElem.remove();
+                addMessage('assistant', '⚠️ Connection error.'); 
+            }
         }
 
         document.getElementById('sendBtn').addEventListener('click', sendQuery);

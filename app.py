@@ -24,6 +24,17 @@ bcrypt = Bcrypt(app)
 login_manager = LoginManager(app)
 login_manager.login_view = 'login'
 
+@app.errorhandler(Exception)
+def handle_exception(e):
+    # If the error is on an API route, return JSON
+    if request.path.startswith('/api/'):
+        return jsonify({
+            "error": "Internal Server Error",
+            "message": str(e)
+        }), 500
+    # Otherwise return the default (which might be a template or error page)
+    return e
+
 # Engine Manager (Shared)
 manager = SecondBrainManager(base_data_folder=app.config['UPLOAD_FOLDER'])
 monitor = start_monitoring(manager)
